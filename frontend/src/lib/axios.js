@@ -10,8 +10,10 @@
 
 import axios from "axios";
 
+const BASE_URL = process.env.MODE === "development" ? "http://localhost:5001/api": "/api";
+
 const api = axios.create({
-  baseURL: "http://localhost:5001/api", // ✅ Fixed: Backend runs on port 5000, not 5001
+  baseURL:BASE_URL, // ✅ Fixed: Backend runs on port 5001, not 5000
 });
 
 export default api;

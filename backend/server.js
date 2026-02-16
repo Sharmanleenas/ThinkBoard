@@ -1,61 +1,88 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import path from "path";
 
+// Internal Imports
 import notesRouter from "./routes/notesRouter.js";
 import rateLimiter from "./middleware/rateLimiter.js";
 import connectDB from "./config/db.js";
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
+const __dirname = path.resolve();
 
 /* -----------------------------
-   Middleware
+    Middleware
 ------------------------------*/
 
-// Enable CORS (frontend running on Vite default port)
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin:
+      process.env.NODE_ENV === "production"
+        ? process.env.CLIENT_URL
+        : "http://localhost:5173",
+    credentials: true,
   }),
 );
 
-// Parse JSON
 app.use(express.json());
 
-// Custom Request Logger
+// Custom Logger
 app.use((req, res, next) => {
   console.log(`📌 ${req.method} | ${req.url}`);
   next();
 });
 
-// Rate Limiter
-app.use(rateLimiter);
+// Rate Limiter applied to API routes
+app.use("/api", rateLimiter);
 
 /* -----------------------------
-   Routes
+    API Routes
 ------------------------------*/
 
 app.use("/api/notes", notesRouter);
 
-// Health Check Route
-app.get("/", (req, res) => {
-  res.status(200).send("🚀 Backend API is running...");
-});
+/* -----------------------------
+    Production Setup (SPA Serving)
+------------------------------*/
+
+if (process.env.NODE_ENV === "production") {
+  // FIX: Go up one level (..) to find the frontend folder from backend/server.js
+  const frontendPath = path.join(__dirname, "..", "frontend", "dist");
+
+  app.use(express.static(frontendPath));
+
+  // FIX: The only wildcard syntax that reliably works in Express 5.0 for SPAs
+  // This tells Express: "If the route doesn't start with /api,
+  // and it's not a static file, send the React index.html"
+  app.get(/^(?!\/api).+/, (req, res) => {
+    res.sendFile(path.join(__dirname, "..", "frontend", "dist", "index.html"));
+  });
+} else {
+  app.get("/", (req, res) => {
+    res.status(200).send("🚀 ThinkBoard API is running in development mode...");
+  });
+}
 
 /* -----------------------------
-   Global Error Handler
+    Global Error Handler
 ------------------------------*/
 
 app.use((err, req, res, next) => {
-  console.error("❌ Server Error:", err.message);
-  res.status(500).json({ message: "Internal Server Error" });
+  console.error("❌ Server Error:", err.stack);
+  res.status(500).json({
+    success: false,
+    message: "Internal Server Error",
+    error: process.env.NODE_ENV === "development" ? err.message : undefined,
+  });
 });
 
 /* -----------------------------
-   Start Server After DB Connect
+    Start Server
 ------------------------------*/
 
 const startServer = async () => {
@@ -73,24 +100,3 @@ const startServer = async () => {
 };
 
 startServer();
-
-/**
- * ================================
- * ThinkBoard Backend Server
- * ================================
- *
- * Features:
- * - Express.js API server for note management
- * - MongoDB database connection
- * - CORS enabled for frontend communication
- * - Rate limiting via Upstash Redis
- * - Request logging middleware
- * - Global error handling
- *
- * Routes:
- * - GET  /api/notes        - Fetch all notes
- * - POST /api/notes        - Create new note
- * - GET  /api/notes/:id    - Fetch single note
- * - PUT  /api/notes/:id    - Update note
- * - DELETE /api/notes/:id  - Delete note
- */
